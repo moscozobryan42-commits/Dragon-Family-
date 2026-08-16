@@ -1,0 +1,355 @@
+-- ========================================================
+-- SCRIPT FINAL UNIFICADO: LLAVE + LOCK + COLORES + TAMAÑO + ESP + AIM ASSIST
+-- ========================================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local camera = workspace.CurrentCamera
+
+local CLAVE_CORRECTA = "123"
+local FUERZA_SUAVIDAD = 0.05
+local DISTANCIA_MAXIMA = 300
+
+local sesionIniciada = false
+local uiBloqueado = false
+local espActivo = false
+
+-- Colores personalizables globales iniciales
+local colorFondoUI = Color3.fromRGB(20, 20, 20) 
+local colorActivoVerde = Color3.fromRGB(0, 200, 100) 
+
+-- DETECCIÓN DE CONSOLA (Bloquea lógica para consola)
+local esConsola = (UserInputService:GetPlatform() == Enum.Platform.XBoxOne or 
+                   UserInputService:GetPlatform() == Enum.Platform.PS4 or 
+                   UserInputService:GetPlatform() == Enum.Platform.PS5)
+
+-- Función para hacer cualquier UI arrastrable
+local function hacerArrastrable(objeto)
+    local arrastrando = false
+    local offset = UDim2.new()
+
+    objeto.InputBegan:Connect(function(input)
+        if uiBloqueado then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            arrastrando = true
+            offset = UDim2.new(0, input.Position.X - objeto.AbsolutePosition.X, 0, input.Position.Y - objeto.AbsolutePosition.Y)
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if uiBloqueado then 
+            arrastrando = false
+            return 
+        end
+        if arrastrando and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            objeto.Position = UDim2.new(0, input.Position.X - offset.X.Offset, 0, input.Position.Y - offset.Y.Offset)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            arrastrando = false
+        end
+    end)
+end
+
+-- 1. UI DE LA LLAVE (LOGIN)
+local screenGui = Instance.new("ScreenGui", playerGui)
+screenGui.Name = "AimAssistSystem"
+screenGui.ResetOnSpawn = false
+
+local frameLlave = Instance.new("Frame", screenGui)
+frameLlave.Size = UDim2.new(0, 200, 0, 150)
+frameLlave.Position = UDim2.new(0.5, -100, 0.5, -75)
+frameLlave.BackgroundColor3 = colorFondoUI
+local kCorner = Instance.new("UICorner", frameLlave)
+kCorner.CornerRadius = UDim.new(0, 8)
+hacerArrastrable(frameLlave)
+
+local inputBox = Instance.new("TextBox", frameLlave)
+inputBox.Size = UDim2.new(0.8, 0, 0, 40)
+inputBox.Position = UDim2.new(0.1, 0, 0.2, 0)
+inputBox.PlaceholderText = "Código Discord..."
+inputBox.Font = Enum.Font.Code
+inputBox.TextSize = 14
+
+local btnEntrar = Instance.new("TextButton", frameLlave)
+btnEntrar.Size = UDim2.new(0.8, 0, 0, 40)
+btnEntrar.Position = UDim2.new(0.1, 0, 0.6, 0)
+btnEntrar.Text = "ACCEDER"
+btnEntrar.Font = Enum.Font.Code
+btnEntrar.TextColor3 = Color3.new(1, 1, 1)
+btnEntrar.BackgroundColor3 = colorActivoVerde
+Instance.new("UICorner", btnEntrar)
+
+-- 2. FUNCIÓN PARA CREAR EL MENÚ Y EL BOTÓN TRAS VALIDAR
+local function mostrarMenuAim()
+    local btnToggle = Instance.new("ImageButton", screenGui)
+    btnToggle.Size = UDim2.new(0, 45, 0, 45)
+    btnToggle.Position = UDim2.new(0.93, 0, 0.4, 0)
+    btnToggle.Image = "rbxassetid://6034287515"
+    btnToggle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    Instance.new("UICorner", btnToggle)
+    hacerArrastrable(btnToggle)
+
+    local menu = Instance.new("Frame", screenGui)
+    menu.Size = UDim2.new(0, 160, 0, 400)
+    menu.Position = UDim2.new(0.75, 0, 0.28, 0)
+    menu.BackgroundColor3 = colorFondoUI
+    menu.BackgroundTransparency = 0.2
+    menu.Visible = false
+    local mCorner = Instance.new("UICorner", menu)
+    mCorner.CornerRadius = UDim.new(0, 8)
+    hacerArrastrable(menu)
+
+    local uiList = Instance.new("UIListLayout", menu)
+    uiList.Padding = UDim.new(0, 5)
+    uiList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    uiList.VerticalAlignment = Enum.VerticalAlignment.Center
+
+    local botonesIntensidad = {}
+
+    local function crearBoton(texto, fuerza)
+        local b = Instance.new("TextButton", menu)
+        b.Size = UDim2.new(0.9, 0, 0, 26)
+        b.Text = texto
+        b.Font = Enum.Font.Code
+        b.TextColor3 = Color3.new(1, 1, 1)
+        b.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
+        
+        table.insert(botonesIntensidad, {button = b, val = fuerza})
+
+        b.MouseButton1Click:Connect(function() 
+            FUERZA_SUAVIDAD = fuerza 
+            
+            for _, info in ipairs(botonesIntensidad) do
+                info.button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            end
+            
+            b.BackgroundColor3 = colorActivoVerde
+        end)
+    end
+
+    crearBoton("Suave", 0.01)
+    crearBoton("Medio", 0.05)
+    crearBoton("Brusco", 0.15)
+    crearBoton("Muy Brusco", 0.35)
+
+    -- Botón de Lock
+    local btnLock = Instance.new("TextButton", menu)
+    btnLock.Size = UDim2.new(0.9, 0, 0, 26)
+    btnLock.Text = "Lock: OFF"
+    btnLock.Font = Enum.Font.Code
+    btnLock.TextColor3 = Color3.new(1, 1, 1)
+    btnLock.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+    Instance.new("UICorner", btnLock).CornerRadius = UDim.new(0, 5)
+
+    btnLock.MouseButton1Click:Connect(function()
+        uiBloqueado = not uiBloqueado
+        if uiBloqueado then
+            btnLock.Text = "Lock: ON"
+            btnLock.BackgroundColor3 = colorActivoVerde
+        else
+            btnLock.Text = "Lock: OFF"
+            btnLock.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+        end
+    end)
+
+    -- Botón de ESP PPL (Jugadores)
+    local btnESP = Instance.new("TextButton", menu)
+    btnESP.Size = UDim2.new(0.9, 0, 0, 26)
+    btnESP.Text = "ESP PPL: OFF"
+    btnESP.Font = Enum.Font.Code
+    btnESP.TextColor3 = Color3.new(1, 1, 1)
+    btnESP.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+    Instance.new("UICorner", btnESP).CornerRadius = UDim.new(0, 5)
+
+    btnESP.MouseButton1Click:Connect(function()
+        espActivo = not espActivo
+        if espActivo then
+            btnESP.Text = "ESP PPL: ON"
+            btnESP.BackgroundColor3 = colorActivoVerde
+        else
+            btnESP.Text = "ESP PPL: OFF"
+            btnESP.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+        end
+    end)
+
+    -- OPCIÓN 1: Cambiar el color del indicador (Acento)
+    local btnCambiarVerde = Instance.new("TextButton", menu)
+    btnCambiarVerde.Size = UDim2.new(0.9, 0, 0, 26)
+    btnCambiarVerde.Text = "Color: Verde"
+    btnCambiarVerde.Font = Enum.Font.Code
+    btnCambiarVerde.TextColor3 = Color3.new(1, 1, 1)
+    btnCambiarVerde.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    Instance.new("UICorner", btnCambiarVerde).CornerRadius = UDim.new(0, 5)
+
+    local indicesColorVerde = 1
+    local listaVerdes = {
+        {nombre = "Verde", color = Color3.fromRGB(0, 200, 100)},
+        {nombre = "Azul", color = Color3.fromRGB(0, 120, 255)},
+        {nombre = "Rojo", color = Color3.fromRGB(220, 50, 50)},
+        {nombre = "Morado", color = Color3.fromRGB(160, 32, 240)},
+        {nombre = "Amarillo", color = Color3.fromRGB(255, 204, 0)},
+        {nombre = "Rosado", color = Color3.fromRGB(255, 105, 180)},
+        {nombre = "Cian", color = Color3.fromRGB(0, 229, 238)}
+    }
+
+    btnCambiarVerde.MouseButton1Click:Connect(function()
+        indicesColorVerde = indicesColorVerde % #listaVerdes + 1
+        local actual = listaVerdes[indicesColorVerde]
+        colorActivoVerde = actual.color
+        btnCambiarVerde.Text = "Color: " .. actual.nombre
+    end)
+
+    -- OPCIÓN 2: Cambiar el color de fondo de toda la UI
+    local btnCambiarFondo = Instance.new("TextButton", menu)
+    btnCambiarFondo.Size = UDim2.new(0.9, 0, 0, 26)
+    btnCambiarFondo.Text = "Fondo: Oscuro"
+    btnCambiarFondo.Font = Enum.Font.Code
+    btnCambiarFondo.TextColor3 = Color3.new(1, 1, 1)
+    btnCambiarFondo.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    Instance.new("UICorner", btnCambiarFondo).CornerRadius = UDim.new(0, 5)
+
+    local indicesColorFondo = 1
+    local listaFondos = {
+        {nombre = "Oscuro", color = Color3.fromRGB(20, 20, 20)},
+        {nombre = "Gris", color = Color3.fromRGB(70, 70, 70)},
+        {nombre = "Azulado", color = Color3.fromRGB(15, 30, 50)},
+        {nombre = "Café", color = Color3.fromRGB(45, 25, 25)},
+        {nombre = "Carbon", color = Color3.fromRGB(10, 10, 10)},
+        {nombre = "Purpura Osc", color = Color3.fromRGB(30, 15, 40)},
+        {nombre = "Verde Osc", color = Color3.fromRGB(15, 35, 20)}
+    }
+
+    btnCambiarFondo.MouseButton1Click:Connect(function()
+        indicesColorFondo = indicesColorFondo % #listaFondos + 1
+        local actualFondo = listaFondos[indicesColorFondo]
+        colorFondoUI = actualFondo.color
+        menu.BackgroundColor3 = colorFondoUI
+        btnCambiarFondo.Text = "Fondo: " .. actualFondo.nombre
+    end)
+
+    -- OPCIÓN 3: Cambiar el tamaño de la UI
+    local btnCambiarTamano = Instance.new("TextButton", menu)
+    btnCambiarTamano.Size = UDim2.new(0.9, 0, 0, 26)
+    btnCambiarTamano.Text = "Tamaño: Normal"
+    btnCambiarTamano.Font = Enum.Font.Code
+    btnCambiarTamano.TextColor3 = Color3.new(1, 1, 1)
+    btnCambiarTamano.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    Instance.new("UICorner", btnCambiarTamano).CornerRadius = UDim.new(0, 5)
+
+    local indiceTamano = 2
+    local listaTamanios = {
+        {nombre = "Pequeño", size = UDim2.new(0, 130, 0, 340)},
+        {nombre = "Normal", size = UDim2.new(0, 160, 0, 400)},
+        {nombre = "Grande", size = UDim2.new(0, 200, 0, 470)}
+    }
+
+    btnCambiarTamano.MouseButton1Click:Connect(function()
+        indiceTamano = indiceTamano % #listaTamanios + 1
+        local actualTam = listaTamanios[indiceTamano]
+        menu.Size = actualTam.size
+        btnCambiarTamano.Text = "Tamaño: " .. actualTam.nombre
+    end)
+
+    btnToggle.MouseButton1Click:Connect(function() 
+        menu.Visible = not menu.Visible 
+    end)
+end
+
+-- 3. VALIDACIÓN DE LA CLAVE
+btnEntrar.MouseButton1Click:Connect(function()
+    if inputBox.Text == CLAVE_CORRECTA then
+        frameLlave:Destroy()
+        sesionIniciada = true
+        mostrarMenuAim()
+    else
+        inputBox.PlaceholderText = "Error"
+        inputBox.Text = ""
+    end
+end)
+
+-- Función auxiliar para verificar si hay una pared de por medio (Raycast)
+local function estaVisible(targetPart)
+    local origen = camera.CFrame.Position
+    local destino = targetPart.Position
+    local direccion = destino - origen
+
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+    
+    local listaIgnorados = {player.Character}
+    if targetPart.Parent then
+        table.insert(listaIgnorados, targetPart.Parent)
+    end
+    raycastParams.FilterDescendantsInstances = listaIgnorados
+
+    local resultadoRaycast = workspace:Raycast(origen, direccion, raycastParams)
+
+    if resultadoRaycast then
+        return false
+    end
+    
+    return true
+end
+
+-- 4. GESTIÓN DE ESP (HIGHLIGHTS)
+RunService.RenderStepped:Connect(function()
+    if not sesionIniciada then return end
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= player and p.Character then
+            local char = p.Character
+            local highlight = char:FindFirstChild("AimAssistESP")
+            
+            if espActivo then
+                if not highlight then
+                    highlight = Instance.new("Highlight")
+                    highlight.Name = "AimAssistESP"
+                    highlight.Adornee = char
+                    highlight.Parent = char
+                end
+                highlight.FillColor = colorActivoVerde
+                highlight.OutlineColor = Color3.new(1, 1, 1)
+                highlight.Enabled = true
+            else
+                if highlight then
+                    highlight.Enabled = false
+                end
+            end
+        end
+    end
+
+    if esConsola then return end
+    
+    -- 5. LÓGICA DE AIM ASSIST
+    local mejorObjetivo = nil
+    local distMin = DISTANCIA_MAXIMA
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            local root = p.Character.HumanoidRootPart
+            local pos, enPantalla = camera:WorldToViewportPoint(root.Position)
+            
+            if enPantalla then
+                local centro = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
+                local dist = (Vector2.new(pos.X, pos.Y) - centro).Magnitude
+                
+                if dist < distMin and estaVisible(root) then
+                    distMin = dist
+                    mejorObjetivo = root
+                end
+            end
+        end
+    end
+
+    if mejorObjetivo then
+        local targetCFrame = CFrame.new(camera.CFrame.Position, mejorObjetivo.Position)
+        camera.CFrame = camera.CFrame:Lerp(targetCFrame, FUERZA_SUAVIDAD)
+    end
+end)
