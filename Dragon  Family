@@ -1,0 +1,1001 @@
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+------------------------------------------------------------------
+-- PALETAS DE COLORES DISPONIBLES
+------------------------------------------------------------------
+local PRESET_THEMES = {
+	Verde = {
+		Background = Color3.fromRGB(12, 20, 15),
+		Header = Color3.fromRGB(18, 32, 24),
+		Card = Color3.fromRGB(24, 40, 30),
+		Accent = Color3.fromRGB(0, 255, 136),
+		AccentDark = Color3.fromRGB(0, 180, 95),
+		Border = Color3.fromRGB(35, 70, 50)
+	},
+	Cyan = {
+		Background = Color3.fromRGB(10, 16, 24),
+		Header = Color3.fromRGB(16, 26, 38),
+		Card = Color3.fromRGB(22, 34, 50),
+		Accent = Color3.fromRGB(0, 220, 255),
+		AccentDark = Color3.fromRGB(0, 150, 200),
+		Border = Color3.fromRGB(30, 60, 85)
+	},
+	Morado = {
+		Background = Color3.fromRGB(18, 12, 24),
+		Header = Color3.fromRGB(28, 18, 38),
+		Card = Color3.fromRGB(36, 24, 48),
+		Accent = Color3.fromRGB(200, 80, 255),
+		AccentDark = Color3.fromRGB(140, 40, 190),
+		Border = Color3.fromRGB(60, 35, 80)
+	},
+	Rojo = {
+		Background = Color3.fromRGB(22, 10, 12),
+		Header = Color3.fromRGB(34, 16, 18),
+		Card = Color3.fromRGB(44, 20, 24),
+		Accent = Color3.fromRGB(255, 60, 80),
+		AccentDark = Color3.fromRGB(190, 30, 50),
+		Border = Color3.fromRGB(80, 30, 38)
+	},
+	Naranja = {
+		Background = Color3.fromRGB(22, 14, 10),
+		Header = Color3.fromRGB(34, 22, 14),
+		Card = Color3.fromRGB(44, 28, 18),
+		Accent = Color3.fromRGB(255, 140, 0),
+		AccentDark = Color3.fromRGB(200, 90, 0),
+		Border = Color3.fromRGB(80, 50, 30)
+	}
+}
+
+local savedThemeName = _G.DragonHub_SavedTheme or "Rojo"
+local currentTheme = PRESET_THEMES[savedThemeName] or PRESET_THEMES.Rojo
+
+local THEME = {
+	TextPrimary = Color3.fromRGB(245, 255, 250),
+	TextSecondary = Color3.fromRGB(140, 160, 155),
+	Danger = Color3.fromRGB(255, 70, 85)
+}
+
+------------------------------------------------------------------
+-- VARIABLES DE ESTADO Y ESCALA DE UI
+------------------------------------------------------------------
+local savedPositions = {} 
+local autoTpWaypoints = {} 
+local autoTpDelay = 2 
+local autoTpMaxLoops = 0 
+local isAutoTpRunning = false
+
+local isTpBoostActive = false
+local tpSpeedDistance = 2.5
+
+local isJumpBoostActive = false
+local jumpPowerVal = 80
+
+local isFlying, flyConnection, flyTrail = false, nil, nil
+local flySpeed = 50
+
+local recordTime = 10
+local isRecording = false
+local recConnection = nil
+local isPlayingLoop = false
+local recordedFrames = {}
+local ghostClone = nil
+local loopConnection = nil
+
+local prismaObjeto, prismaConexion = nil, nil
+local prismaOffset = Vector3.new(0, 4, 0)
+
+local instantPromptsEnabled = false
+
+-- Dimensiones base para ajustar la interfaz
+local BASE_WIDTH = 380
+local BASE_HEIGHT = 500
+local currentUIScale = 1.0
+
+------------------------------------------------------------------
+-- LÓGICA DE INSTANT PROMPTS
+------------------------------------------------------------------
+ProximityPromptService.PromptShown:Connect(function(prompt)
+	if instantPromptsEnabled then
+		prompt.HoldDuration = 0
+	end
+end)
+
+local function updateAllPrompts()
+	if instantPromptsEnabled then
+		for _, v in pairs(workspace:GetDescendants()) do
+			if v:IsA("ProximityPrompt") then
+				v.HoldDuration = 0
+			end
+		end
+	end
+end
+
+------------------------------------------------------------------
+-- INTERFAZ BASE
+------------------------------------------------------------------
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "DragonFamilyHub_UI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+------------------------------------------------------------------
+-- PANTALLA NEGRA DE INTRO CON ANIMACIÓN
+------------------------------------------------------------------
+local introFrame = Instance.new("Frame", screenGui)
+introFrame.Name = "IntroFrame"
+introFrame.Size = UDim2.new(1, 0, 1, 0)
+introFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+introFrame.BorderSizePixel = 0
+introFrame.ZIndex = 100
+
+local introText = Instance.new("TextLabel", introFrame)
+introText.Size = UDim2.new(1, -40, 0, 100)
+introText.Position = UDim2.new(0, 20, 0.5, -100)
+introText.BackgroundTransparency = 1
+introText.Text = "pessi es una mujer mala grrr 🐾😈"
+introText.TextColor3 = Color3.fromRGB(255, 50, 70)
+introText.Font = Enum.Font.GothamBold
+introText.TextSize = 26
+introText.TextScaled = true
+introText.TextTransparency = 1
+introText.ZIndex = 101
+
+TweenService:Create(introText, TweenInfo.new(0.8, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+	Position = UDim2.new(0, 20, 0.5, -50),
+	TextTransparency = 0
+}):Play()
+
+------------------------------------------------------------------
+-- VENTANA SELECCIÓN DE COLOR INICIAL
+------------------------------------------------------------------
+local colorPickerFrame = Instance.new("Frame", screenGui)
+colorPickerFrame.Name = "ColorPickerFrame"
+colorPickerFrame.Size = UDim2.new(0, 320, 0, 280)
+colorPickerFrame.Position = UDim2.new(0.5, -160, 0.5, -140)
+colorPickerFrame.BackgroundColor3 = Color3.fromRGB(15, 18, 22)
+colorPickerFrame.Visible = false
+colorPickerFrame.ZIndex = 90
+Instance.new("UICorner", colorPickerFrame).CornerRadius = UDim.new(0, 16)
+
+local pickerStroke = Instance.new("UIStroke", colorPickerFrame)
+pickerStroke.Color = Color3.fromRGB(40, 50, 65)
+pickerStroke.Thickness = 2
+
+local pickerTitle = Instance.new("TextLabel", colorPickerFrame)
+pickerTitle.Size = UDim2.new(1, 0, 0, 40)
+pickerTitle.BackgroundTransparency = 1
+pickerTitle.Text = "🎨 ¿QUÉ COLOR QUIERES?"
+pickerTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+pickerTitle.Font = Enum.Font.GothamBold
+pickerTitle.TextSize = 14
+pickerTitle.ZIndex = 91
+
+local pickerList = Instance.new("Frame", colorPickerFrame)
+pickerList.Size = UDim2.new(1, -20, 1, -50)
+pickerList.Position = UDim2.new(0, 10, 0, 45)
+pickerList.BackgroundTransparency = 1
+pickerList.ZIndex = 91
+
+local pickerLayout = Instance.new("UIListLayout", pickerList)
+pickerLayout.Padding = UDim.new(0, 8)
+
+------------------------------------------------------------------
+-- VENTANA PRINCIPAL Y MESH DE ESCALA
+------------------------------------------------------------------
+local toggleBtn = Instance.new("TextButton", screenGui)
+toggleBtn.Name = "ToggleMenuBtn"
+toggleBtn.Size = UDim2.new(0, 50, 0, 50)
+toggleBtn.Position = UDim2.new(0.02, 0, 0.4, 0)
+toggleBtn.BackgroundColor3 = currentTheme.Header
+toggleBtn.Text = "🐉"
+toggleBtn.TextColor3 = currentTheme.Accent
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.TextSize = 26
+toggleBtn.Visible = false
+
+Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(1, 0)
+local tStroke = Instance.new("UIStroke", toggleBtn)
+tStroke.Color = currentTheme.Accent
+tStroke.Thickness = 2
+
+local draggingToggle, dragStartToggle, startPosToggle
+toggleBtn.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		draggingToggle = true; dragStartToggle = input.Position; startPosToggle = toggleBtn.Position
+	end
+end)
+toggleBtn.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		draggingToggle = false
+	end
+end)
+UserInputService.InputChanged:Connect(function(input)
+	if draggingToggle and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+		local delta = input.Position - dragStartToggle
+		toggleBtn.Position = UDim2.new(startPosToggle.X.Scale, startPosToggle.X.Offset + delta.X, startPosToggle.Y.Scale, startPosToggle.Y.Offset + delta.Y)
+	end
+end)
+
+local mainFrame = Instance.new("Frame", screenGui)
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, BASE_WIDTH, 0, BASE_HEIGHT)
+mainFrame.Position = UDim2.new(0.5, -BASE_WIDTH/2, 0.5, -BASE_HEIGHT/2)
+mainFrame.BackgroundColor3 = currentTheme.Background
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.ClipsDescendants = true
+mainFrame.Visible = false
+
+local uiScaleObj = Instance.new("UIScale", mainFrame)
+uiScaleObj.Scale = currentUIScale
+
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 14)
+local mStroke = Instance.new("UIStroke", mainFrame)
+mStroke.Color = currentTheme.Border
+mStroke.Thickness = 1.5
+
+local titleBar = Instance.new("Frame", mainFrame)
+titleBar.Size = UDim2.new(1, 0, 0, 42)
+titleBar.BackgroundColor3 = currentTheme.Header
+Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 14)
+
+local titleText = Instance.new("TextLabel", titleBar)
+titleText.Size = UDim2.new(0.65, 0, 1, 0)
+titleText.Position = UDim2.new(0, 14, 0, 0)
+titleText.BackgroundTransparency = 1
+titleText.Text = "🐉 DRAGON FAMILY HUB"
+titleText.TextColor3 = THEME.TextPrimary
+titleText.Font = Enum.Font.GothamBold
+titleText.TextSize = 13
+titleText.TextXAlignment = Enum.TextXAlignment.Left
+
+local fpsLabel = Instance.new("TextLabel", titleBar)
+fpsLabel.Size = UDim2.new(0.2, 0, 1, 0)
+fpsLabel.Position = UDim2.new(0.65, 0, 0, 0)
+fpsLabel.BackgroundTransparency = 1
+fpsLabel.Text = "FPS: --"
+fpsLabel.TextColor3 = currentTheme.Accent
+fpsLabel.Font = Enum.Font.GothamMedium
+fpsLabel.TextSize = 11
+
+local minimizeBtn = Instance.new("TextButton", titleBar)
+minimizeBtn.Size = UDim2.new(0, 32, 0, 32)
+minimizeBtn.Position = UDim2.new(1, -38, 0, 5)
+minimizeBtn.BackgroundColor3 = currentTheme.Card
+minimizeBtn.Text = "🐉"
+minimizeBtn.TextColor3 = currentTheme.Accent
+minimizeBtn.Font = Enum.Font.GothamBold
+minimizeBtn.TextSize = 16
+Instance.new("UICorner", minimizeBtn).CornerRadius = UDim.new(0, 8)
+
+local function animateOpen()
+	mainFrame.Visible = true
+	uiScaleObj.Scale = 0
+	TweenService:Create(uiScaleObj, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		Scale = currentUIScale
+	}):Play()
+end
+
+------------------------------------------------------------------
+-- NAVEGACIÓN Y PESTAÑAS
+------------------------------------------------------------------
+local tabHolder = Instance.new("ScrollingFrame", mainFrame)
+tabHolder.Size = UDim2.new(1, -20, 0, 34)
+tabHolder.Position = UDim2.new(0, 10, 0, 48)
+tabHolder.BackgroundTransparency = 1
+tabHolder.BorderSizePixel = 0
+tabHolder.ScrollBarThickness = 2
+tabHolder.AutomaticCanvasSize = Enum.AutomaticSize.X
+tabHolder.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+local tabLayout = Instance.new("UIListLayout", tabHolder)
+tabLayout.FillDirection = Enum.FillDirection.Horizontal
+tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+tabLayout.Padding = UDim.new(0, 4)
+
+local function createTabBtn(text, order)
+	local btn = Instance.new("TextButton", tabHolder)
+	btn.Size = UDim2.new(0, 65, 1, 0)
+	btn.LayoutOrder = order
+	btn.BackgroundColor3 = currentTheme.Card
+	btn.Text = text
+	btn.TextColor3 = THEME.TextSecondary
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 8
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+	return btn
+end
+
+local tabTPBtn = createTabBtn("Teleport", 1)
+local tabAutoTpBtn = createTabBtn("AutoLoop", 2)
+local tabCharBtn = createTabBtn("Stats", 3)
+local tabSizeBtn = createTabBtn("Size 📏", 4)
+local tabCopyBtn = createTabBtn("CopyMove", 5)
+local tabPrismaBtn = createTabBtn("Prisma", 6)
+local tabPlayersBtn = createTabBtn("Players", 7)
+local tabPessiBtn = createTabBtn("Pessi 🐾", 8)
+local tabThemeBtn = createTabBtn("Colors 🎨", 9)
+local tabMiscBtn = createTabBtn("Misc 🛠️", 10)
+
+local function createPanel()
+	local p = Instance.new("ScrollingFrame", mainFrame)
+	p.Size = UDim2.new(1, -20, 1, -96)
+	p.Position = UDim2.new(0, 10, 0, 88)
+	p.BackgroundTransparency = 1
+	p.BorderSizePixel = 0
+	p.ScrollBarThickness = 3
+	p.ScrollBarImageColor3 = currentTheme.Accent
+	p.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	p.CanvasSize = UDim2.new(0, 0, 0, 0)
+	
+	local l = Instance.new("UIListLayout", p)
+	l.SortOrder = Enum.SortOrder.LayoutOrder
+	l.Padding = UDim.new(0, 8)
+	return p
+end
+
+local tpPanel = createPanel()
+local autoTpPanel = createPanel(); autoTpPanel.Visible = false
+local charPanel = createPanel(); charPanel.Visible = false
+local sizePanel = createPanel(); sizePanel.Visible = false
+local copyPanel = createPanel(); copyPanel.Visible = false
+local prismaPanel = createPanel(); prismaPanel.Visible = false
+local playersPanel = createPanel(); playersPanel.Visible = false
+local pessiPanel = createPanel(); pessiPanel.Visible = false
+local themePanel = createPanel(); themePanel.Visible = false
+local miscPanel = createPanel(); miscPanel.Visible = false
+
+local panels = {tpPanel, autoTpPanel, charPanel, sizePanel, copyPanel, prismaPanel, playersPanel, pessiPanel, themePanel, miscPanel}
+local tabs = {tabTPBtn, tabAutoTpBtn, tabCharBtn, tabSizeBtn, tabCopyBtn, tabPrismaBtn, tabPlayersBtn, tabPessiBtn, tabThemeBtn, tabMiscBtn}
+
+local function switchTab(index)
+	for i, p in ipairs(panels) do
+		local isSelected = (i == index)
+		p.Visible = isSelected
+		TweenService:Create(tabs[i], TweenInfo.new(0.2), {
+			BackgroundColor3 = isSelected and currentTheme.Accent or currentTheme.Card,
+			TextColor3 = isSelected and Color3.fromRGB(10, 16, 13) or THEME.TextSecondary
+		}):Play()
+	end
+end
+
+for i, t in ipairs(tabs) do t.MouseButton1Click:Connect(function() switchTab(i) end) end
+switchTab(1)
+
+------------------------------------------------------------------
+-- CAMBIADOR DE TEMAS
+------------------------------------------------------------------
+local registeredCards = {}
+local registeredStrokes = {}
+local registeredAccents = {}
+
+local function applyTheme(themeData, themeName)
+	currentTheme = themeData
+	if themeName then _G.DragonHub_SavedTheme = themeName end
+
+	mainFrame.BackgroundColor3 = themeData.Background
+	titleBar.BackgroundColor3 = themeData.Header
+	toggleBtn.BackgroundColor3 = themeData.Header
+	toggleBtn.TextColor3 = themeData.Accent
+	tStroke.Color = themeData.Accent
+	mStroke.Color = themeData.Border
+	fpsLabel.TextColor3 = themeData.Accent
+	minimizeBtn.TextColor3 = themeData.Accent
+
+	for _, card in ipairs(registeredCards) do card.BackgroundColor3 = themeData.Card end
+	for _, stroke in ipairs(registeredStrokes) do stroke.Color = themeData.Border end
+	for _, acc in ipairs(registeredAccents) do acc.TextColor3 = themeData.Accent end
+end
+
+------------------------------------------------------------------
+-- COMPONENTES AUXILIARES
+------------------------------------------------------------------
+local function createSection(parent, titleText)
+	local sec = Instance.new("Frame", parent)
+	sec.Size = UDim2.new(1, -4, 0, 0)
+	sec.AutomaticSize = Enum.AutomaticSize.Y
+	sec.BackgroundColor3 = currentTheme.Card
+	table.insert(registeredCards, sec)
+	Instance.new("UICorner", sec).CornerRadius = UDim.new(0, 10)
+	
+	local secStroke = Instance.new("UIStroke", sec)
+	secStroke.Color = currentTheme.Border
+	secStroke.Thickness = 1
+	table.insert(registeredStrokes, secStroke)
+	
+	local sLayout = Instance.new("UIListLayout", sec)
+	sLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	sLayout.Padding = UDim.new(0, 6)
+	
+	local sPadding = Instance.new("UIPadding", sec)
+	sPadding.PaddingTop = UDim.new(0, 10); sPadding.PaddingBottom = UDim.new(0, 10)
+	sPadding.PaddingLeft = UDim.new(0, 10); sPadding.PaddingRight = UDim.new(0, 10)
+	
+	local sTitle = Instance.new("TextLabel", sec)
+	sTitle.Size = UDim2.new(1, 0, 0, 16)
+	sTitle.BackgroundTransparency = 1
+	sTitle.Text = titleText:upper()
+	sTitle.TextColor3 = currentTheme.Accent
+	table.insert(registeredAccents, sTitle)
+	sTitle.Font = Enum.Font.GothamBold
+	sTitle.TextSize = 10
+	sTitle.TextXAlignment = Enum.TextXAlignment.Left
+	return sec
+end
+
+local function createInput(parent, text, defaultVal, callback)
+	local container = Instance.new("Frame", parent)
+	container.Size = UDim2.new(1, 0, 0, 28)
+	container.BackgroundTransparency = 1
+	
+	local lbl = Instance.new("TextLabel", container)
+	lbl.Size = UDim2.new(0.6, 0, 1, 0)
+	lbl.BackgroundTransparency = 1
+	lbl.Text = text
+	lbl.TextColor3 = THEME.TextPrimary
+	lbl.Font = Enum.Font.Gotham
+	lbl.TextSize = 10
+	lbl.TextXAlignment = Enum.TextXAlignment.Left
+	
+	local box = Instance.new("TextBox", container)
+	box.Size = UDim2.new(0.38, 0, 1, 0)
+	box.Position = UDim2.new(0.62, 0, 0, 0)
+	box.BackgroundColor3 = currentTheme.Header
+	table.insert(registeredCards, box)
+	box.Text = tostring(defaultVal)
+	box.TextColor3 = currentTheme.Accent
+	table.insert(registeredAccents, box)
+	box.Font = Enum.Font.GothamBold
+	box.TextSize = 10
+	Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6)
+	
+	local bStroke = Instance.new("UIStroke", box)
+	bStroke.Color = currentTheme.Border
+	table.insert(registeredStrokes, bStroke)
+	
+	box.FocusLost:Connect(function()
+		local val = tonumber(box.Text)
+		if val then callback(val) else callback(box.Text) end
+	end)
+	return box
+end
+
+local function createBtn(parent, text, color, callback)
+	local btn = Instance.new("TextButton", parent)
+	btn.Size = UDim2.new(1, 0, 0, 30)
+	btn.BackgroundColor3 = color
+	btn.Text = text
+	btn.TextColor3 = (color == currentTheme.Accent) and Color3.fromRGB(10, 16, 13) or Color3.fromRGB(255, 255, 255)
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 10
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+	btn.MouseButton1Click:Connect(callback)
+	return btn
+end
+
+------------------------------------------------------------------
+-- CONSTRUIR BOTONES DE LA SELECCIÓN DE COLOR INICIAL
+------------------------------------------------------------------
+for name, data in pairs(PRESET_THEMES) do
+	local cBtn = Instance.new("TextButton", pickerList)
+	cBtn.Size = UDim2.new(1, 0, 0, 36)
+	cBtn.BackgroundColor3 = data.Card
+	cBtn.Text = "Tema: " .. name
+	cBtn.TextColor3 = data.Accent
+	cBtn.Font = Enum.Font.GothamBold
+	cBtn.TextSize = 11
+	cBtn.ZIndex = 92
+	Instance.new("UICorner", cBtn).CornerRadius = UDim.new(0, 8)
+	
+	local cStroke = Instance.new("UIStroke", cBtn)
+	cStroke.Color = data.Border
+	
+	cBtn.MouseButton1Click:Connect(function()
+		applyTheme(data, name)
+		colorPickerFrame.Visible = false
+		animateOpen()
+	end)
+end
+
+------------------------------------------------------------------
+-- FLUJO DE INICIO
+------------------------------------------------------------------
+task.spawn(function()
+	task.wait(3)
+	local fade = TweenService:Create(introFrame, TweenInfo.new(0.5), {BackgroundTransparency = 1})
+	TweenService:Create(introText, TweenInfo.new(0.5), {TextTransparency = 1}):Play()
+	fade:Play()
+	fade.Completed:Connect(function()
+		introFrame:Destroy()
+		colorPickerFrame.Visible = true
+	end)
+end)
+
+------------------------------------------------------------------
+-- PESTAÑA: SIZE (CAMBIA EL TAMAÑO DE LA INTERFAZ)
+------------------------------------------------------------------
+local secSize = createSection(sizePanel, "📏 Tamaño del Menú")
+
+local function setUIScale(newScale)
+	currentUIScale = newScale
+	TweenService:Create(uiScaleObj, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Scale = newScale
+	}):Play()
+end
+
+createBtn(secSize, "🔹 Small (Menú Pequeño)", currentTheme.Header, function()
+	setUIScale(0.7)
+end)
+
+createBtn(secSize, "🔸 Medium (Menú Normal)", currentTheme.Header, function()
+	setUIScale(1.0)
+end)
+
+createBtn(secSize, "🔺 Large (Menú Grande)", currentTheme.AccentDark, function()
+	setUIScale(1.3)
+end)
+
+------------------------------------------------------------------
+-- PESTAÑA: MISC (NUEVA)
+------------------------------------------------------------------
+local secMisc = createSection(miscPanel, "🛠️ Utilidades")
+local promptBtn = createBtn(secMisc, "⚡ Instant Prompts: OFF", currentTheme.Header, function() end)
+
+promptBtn.MouseButton1Click:Connect(function()
+	instantPromptsEnabled = not instantPromptsEnabled
+	promptBtn.Text = instantPromptsEnabled and "⚡ Instant Prompts: ON" or "⚡ Instant Prompts: OFF"
+	promptBtn.BackgroundColor3 = instantPromptsEnabled and currentTheme.AccentDark or currentTheme.Header
+	updateAllPrompts()
+end)
+
+------------------------------------------------------------------
+-- PESTAÑA: PESSI
+------------------------------------------------------------------
+local secPessi = createSection(pessiPanel, "🐾 Alerta Pessi")
+local pessiStatusLbl = Instance.new("TextLabel", secPessi)
+pessiStatusLbl.Size = UDim2.new(1, 0, 0, 40)
+pessiStatusLbl.BackgroundTransparency = 1
+pessiStatusLbl.Text = "Presiona el botón para revelar la verdad sobre Pessi..."
+pessiStatusLbl.TextColor3 = THEME.TextPrimary
+pessiStatusLbl.Font = Enum.Font.GothamMedium
+pessiStatusLbl.TextSize = 11
+pessiStatusLbl.TextWrapped = true
+
+createBtn(secPessi, "🔥 Revelar Verdad de Pessi", THEME.Danger, function()
+	pessiStatusLbl.Text = "pessi es una mujer mala grrr 🐾😈"
+	pessiStatusLbl.TextColor3 = currentTheme.Accent
+end)
+
+------------------------------------------------------------------
+-- PESTAÑA: SELECCIÓN DE TEMAS / COLORES
+------------------------------------------------------------------
+local secThemeSelect = createSection(themePanel, "🎨 Seleccionar Color de Tema")
+for themeName, themeData in pairs(PRESET_THEMES) do
+	createBtn(secThemeSelect, "Color: " .. themeName, themeData.Accent, function()
+		applyTheme(themeData, themeName)
+	end)
+end
+
+------------------------------------------------------------------
+-- 1. TELEPORT Y GUARDAR NOMBRADO
+------------------------------------------------------------------
+local secSaveTP = createSection(tpPanel, "📍 Guardar Posiciones")
+local nameInputContainer = Instance.new("Frame", secSaveTP)
+nameInputContainer.Size = UDim2.new(1, 0, 0, 28)
+nameInputContainer.BackgroundTransparency = 1
+
+local nameBox = Instance.new("TextBox", nameInputContainer)
+nameBox.Size = UDim2.new(0.65, 0, 1, 0)
+nameBox.BackgroundColor3 = currentTheme.Header
+table.insert(registeredCards, nameBox)
+nameBox.PlaceholderText = "Nombre del punto..."
+nameBox.PlaceholderColor3 = THEME.TextSecondary
+nameBox.Text = ""
+nameBox.TextColor3 = THEME.TextPrimary
+nameBox.Font = Enum.Font.Gotham
+nameBox.TextSize = 10
+Instance.new("UICorner", nameBox).CornerRadius = UDim.new(0, 6)
+local nbStroke = Instance.new("UIStroke", nameBox)
+nbStroke.Color = currentTheme.Border
+table.insert(registeredStrokes, nbStroke)
+
+local savedListContainer = Instance.new("Frame", secSaveTP)
+savedListContainer.Size = UDim2.new(1, 0, 0, 0)
+savedListContainer.AutomaticSize = Enum.AutomaticSize.Y
+savedListContainer.BackgroundTransparency = 1
+local savedListLayout = Instance.new("UIListLayout", savedListContainer)
+savedListLayout.Padding = UDim.new(0, 4)
+
+local function renderSavedPositions()
+	for _, child in pairs(savedListContainer:GetChildren()) do if child:IsA("Frame") then child:Destroy() end end
+	for index, item in ipairs(savedPositions) do
+		local row = Instance.new("Frame", savedListContainer)
+		row.Size = UDim2.new(1, 0, 0, 26)
+		row.BackgroundTransparency = 1
+
+		local tpBtn = createBtn(row, "📍 " .. item.Name, currentTheme.Header, function()
+			if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+				player.Character.HumanoidRootPart.CFrame = item.CFrame
+			end
+		end)
+		tpBtn.Size = UDim2.new(0.76, 0, 1, 0)
+
+		local delBtn = createBtn(row, "✕", THEME.Danger, function()
+			table.remove(savedPositions, index)
+			renderSavedPositions()
+		end)
+		delBtn.Size = UDim2.new(0.2, 0, 1, 0)
+		delBtn.Position = UDim2.new(0.8, 0, 0, 0)
+	end
+end
+
+createBtn(nameInputContainer, "Guardar", currentTheme.AccentDark, function()
+	local char = player.Character
+	if char and char:FindFirstChild("HumanoidRootPart") then
+		local pName = (nameBox.Text ~= "" and nameBox.Text) or ("Punto #" .. (#savedPositions + 1))
+		table.insert(savedPositions, {Name = pName, CFrame = char.HumanoidRootPart.CFrame})
+		nameBox.Text = ""
+		renderSavedPositions()
+	end
+end).Size = UDim2.new(0.32, 0, 1, 0)
+
+------------------------------------------------------------------
+-- 2. AUTO LOOP TP
+------------------------------------------------------------------
+local secAutoControl = createSection(autoTpPanel, "⚡ Controles del Bucle")
+createBtn(secAutoControl, "➕ Agregar Mi Posición Actual", currentTheme.Header, function()
+	local char = player.Character
+	if char and char:FindFirstChild("HumanoidRootPart") then
+		table.insert(autoTpWaypoints, char.HumanoidRootPart.CFrame)
+		if renderAutoTpWaypoints then renderAutoTpWaypoints() end
+	end
+end)
+
+createInput(secAutoControl, "Espera (seg):", autoTpDelay, function(v) autoTpDelay = tonumber(v) or 2 end)
+createInput(secAutoControl, "Repeticiones (0 = Inf):", autoTpMaxLoops, function(v) autoTpMaxLoops = tonumber(v) or 0 end)
+
+local toggleLoopBtn = createBtn(secAutoControl, "▶ Iniciar Bucle", currentTheme.AccentDark, function() end)
+
+local secAutoTpList = createSection(autoTpPanel, "🔄 Lista de Puntos")
+local waypointsListContainer = Instance.new("Frame", secAutoTpList)
+waypointsListContainer.Size = UDim2.new(1, 0, 0, 0)
+waypointsListContainer.AutomaticSize = Enum.AutomaticSize.Y
+waypointsListContainer.BackgroundTransparency = 1
+local waypointsLayout = Instance.new("UIListLayout", waypointsListContainer)
+waypointsLayout.Padding = UDim.new(0, 4)
+
+function renderAutoTpWaypoints()
+	for _, child in pairs(waypointsListContainer:GetChildren()) do if child:IsA("Frame") then child:Destroy() end end
+	for index, _ in ipairs(autoTpWaypoints) do
+		local row = Instance.new("Frame", waypointsListContainer)
+		row.Size = UDim2.new(1, 0, 0, 26)
+		row.BackgroundTransparency = 1
+
+		local lbl = Instance.new("TextLabel", row)
+		lbl.Size = UDim2.new(0.76, 0, 1, 0)
+		lbl.BackgroundColor3 = currentTheme.Header
+		table.insert(registeredCards, lbl)
+		lbl.Text = "  📌 Punto #" .. index
+		lbl.TextColor3 = THEME.TextPrimary
+		lbl.Font = Enum.Font.Gotham
+		lbl.TextSize = 10
+		lbl.TextXAlignment = Enum.TextXAlignment.Left
+		Instance.new("UICorner", lbl).CornerRadius = UDim.new(0, 6)
+
+		local delBtn = createBtn(row, "✕", THEME.Danger, function()
+			table.remove(autoTpWaypoints, index)
+			renderAutoTpWaypoints()
+		end)
+		delBtn.Size = UDim2.new(0.2, 0, 1, 0)
+		delBtn.Position = UDim2.new(0.8, 0, 0, 0)
+	end
+end
+
+toggleLoopBtn.MouseButton1Click:Connect(function()
+	if isAutoTpRunning then
+		isAutoTpRunning = false
+		toggleLoopBtn.Text = "▶ Iniciar Bucle"
+		toggleLoopBtn.BackgroundColor3 = currentTheme.AccentDark
+	else
+		if #autoTpWaypoints == 0 then
+			toggleLoopBtn.Text = "¡Agrega al menos 1 punto!"
+			task.wait(1.5)
+			toggleLoopBtn.Text = "▶ Iniciar Bucle"
+			return
+		end
+		
+		isAutoTpRunning = true
+		toggleLoopBtn.Text = "⏹ Detener Bucle"
+		toggleLoopBtn.BackgroundColor3 = THEME.Danger
+
+		task.spawn(function()
+			local currentLoop = 0
+			while isAutoTpRunning do
+				if autoTpMaxLoops > 0 and currentLoop >= autoTpMaxLoops then break end
+				for _, targetCFrame in ipairs(autoTpWaypoints) do
+					if not isAutoTpRunning then break end
+					local char = player.Character
+					if char and char:FindFirstChild("HumanoidRootPart") then
+						char.HumanoidRootPart.CFrame = targetCFrame
+					end
+					task.wait(autoTpDelay)
+				end
+				currentLoop = currentLoop + 1
+			end
+			isAutoTpRunning = false
+			toggleLoopBtn.Text = "▶ Iniciar Bucle"
+			toggleLoopBtn.BackgroundColor3 = currentTheme.AccentDark
+		end)
+	end
+end)
+
+------------------------------------------------------------------
+-- 3. STATS, TP BOOST & JUMP BOOST
+------------------------------------------------------------------
+local secStats = createSection(charPanel, "⚡ Boosts de Personaje")
+
+createInput(secStats, "Distancia TP Boost:", tpSpeedDistance, function(v) tpSpeedDistance = tonumber(v) or 2.5 end)
+createInput(secStats, "Fuerza Jump Boost:", jumpPowerVal, function(v) jumpPowerVal = tonumber(v) or 80 end)
+createInput(secStats, "Fly Speed:", flySpeed, function(v) flySpeed = tonumber(v) or 50 end)
+
+local toggleTpBoostBtn = createBtn(secStats, "⚡ Activar TP Boost", currentTheme.Header, function() end)
+local toggleJumpBoostBtn = createBtn(secStats, "🦘 Activar Jump Boost", currentTheme.Header, function() end)
+local flyBtn = createBtn(secStats, "🚀 Activar Fly", currentTheme.AccentDark, function() end)
+
+toggleTpBoostBtn.MouseButton1Click:Connect(function()
+	isTpBoostActive = not isTpBoostActive
+	if isTpBoostActive then
+		toggleTpBoostBtn.Text = "⚡ Desactivar TP Boost"
+		toggleTpBoostBtn.BackgroundColor3 = currentTheme.AccentDark
+	else
+		toggleTpBoostBtn.Text = "⚡ Activar TP Boost"
+		toggleTpBoostBtn.BackgroundColor3 = currentTheme.Header
+	end
+end)
+
+toggleJumpBoostBtn.MouseButton1Click:Connect(function()
+	isJumpBoostActive = not isJumpBoostActive
+	if isJumpBoostActive then
+		toggleJumpBoostBtn.Text = "🦘 Desactivar Jump Boost"
+		toggleJumpBoostBtn.BackgroundColor3 = currentTheme.AccentDark
+	else
+		toggleJumpBoostBtn.Text = "🦘 Activar Jump Boost"
+		toggleJumpBoostBtn.BackgroundColor3 = currentTheme.Header
+	end
+end)
+
+local function applyJumpImpulse()
+	if not isJumpBoostActive then return end
+	local char = player.Character
+	if not char then return end
+	local root = char:FindFirstChild("HumanoidRootPart")
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	
+	if root and hum then
+		root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, jumpPowerVal, root.AssemblyLinearVelocity.Z)
+	end
+end
+
+UserInputService.JumpRequest:Connect(function()
+	applyJumpImpulse()
+end)
+
+RunService.RenderStepped:Connect(function()
+	local char = player.Character
+	if char and not isFlying then
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		local root = char:FindFirstChild("HumanoidRootPart")
+		
+		if hum and root then
+			if isTpBoostActive and hum.MoveDirection.Magnitude > 0 then
+				root.CFrame = root.CFrame + (hum.MoveDirection * tpSpeedDistance)
+			end
+		end
+	end
+end)
+
+flyBtn.MouseButton1Click:Connect(function()
+	isFlying = not isFlying
+	local char = player.Character
+	if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+	local root = char.HumanoidRootPart
+
+	if isFlying then
+		flyBtn.Text = "🚀 Desactivar Fly"
+		flyBtn.BackgroundColor3 = THEME.Danger
+		
+		local a0 = Instance.new("Attachment", root); a0.Name = "FlyA0"; a0.Position = Vector3.new(0, 1, 0)
+		local a1 = Instance.new("Attachment", root); a1.Name = "FlyA1"; a1.Position = Vector3.new(0, -1, 0)
+		flyTrail = Instance.new("Trail", root)
+		flyTrail.Attachment0 = a0; flyTrail.Attachment1 = a1
+		flyTrail.Color = ColorSequence.new(currentTheme.Accent, Color3.fromRGB(0, 100, 50))
+		flyTrail.Lifetime = 0.5; flyTrail.WidthScale = NumberSequence.new(1, 0)
+
+		local bv = Instance.new("BodyVelocity", root); bv.Name = "CoolFlyVel"; bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+		local bg = Instance.new("BodyGyro", root); bg.Name = "CoolFlyGyro"; bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge); bg.P = 10000
+
+		flyConnection = RunService.RenderStepped:Connect(function()
+			if not isFlying then return end
+			local cam = workspace.CurrentCamera
+			local moveDir = char.Humanoid.MoveDirection
+			bg.CFrame = cam.CFrame * CFrame.Angles(0, 0, -moveDir.X * 0.3)
+			bv.Velocity = (cam.CFrame.LookVector * (-moveDir.Z) + cam.CFrame.RightVector * moveDir.X) * flySpeed
+		end)
+	else
+		flyBtn.Text = "🚀 Activar Fly"
+		flyBtn.BackgroundColor3 = currentTheme.AccentDark
+		if flyConnection then flyConnection:Disconnect() end
+		if root:FindFirstChild("CoolFlyVel") then root.CoolFlyVel:Destroy() end
+		if root:FindFirstChild("CoolFlyGyro") then root.CoolFlyGyro:Destroy() end
+		if root:FindFirstChild("FlyA0") then root.FlyA0:Destroy() end
+		if root:FindFirstChild("FlyA1") then root.FlyA1:Destroy() end
+		if flyTrail then flyTrail:Destroy() end
+	end
+end)
+
+------------------------------------------------------------------
+-- 4. COPY MOVEMENTS
+------------------------------------------------------------------
+local secCopy = createSection(copyPanel, "🎬 Grabar Movimientos")
+createInput(secCopy, "Tiempo Max (s):", "10", function(v) recordTime = tonumber(v) or math.huge end)
+
+local recordBtn = createBtn(secCopy, "🔴 Empezar Grabación", THEME.Danger, function() end)
+local stopRecordBtn = createBtn(secCopy, "⏹ Detener Grabación", currentTheme.Header, function() end)
+local playLoopBtn = createBtn(secCopy, "🔁 Repetir Movimientos", currentTheme.AccentDark, function() end)
+
+local function stopRecordingLogic()
+	if isRecording then
+		isRecording = false
+		if recConnection then recConnection:Disconnect(); recConnection = nil end
+		recordBtn.Text = "🔴 Empezar Grabación"; recordBtn.BackgroundColor3 = THEME.Danger
+		stopRecordBtn.BackgroundColor3 = currentTheme.Header
+	end
+end
+
+recordBtn.MouseButton1Click:Connect(function()
+	if isRecording then return end
+	local char = player.Character
+	if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+	
+	isRecording = true; recordedFrames = {}
+	recordBtn.Text = "🔴 Grabando..."; recordBtn.BackgroundColor3 = Color3.fromRGB(255, 140, 0)
+	stopRecordBtn.BackgroundColor3 = THEME.Danger
+
+	local startTime = tick()
+	recConnection = RunService.Heartbeat:Connect(function()
+		local elapsed = tick() - startTime
+		if not isRecording or (recordTime ~= math.huge and elapsed >= recordTime) then
+			stopRecordingLogic(); return
+		end
+		table.insert(recordedFrames, char.HumanoidRootPart.CFrame)
+	end)
+end)
+
+stopRecordBtn.MouseButton1Click:Connect(function() stopRecordingLogic() end)
+
+playLoopBtn.MouseButton1Click:Connect(function()
+	if isPlayingLoop then
+		isPlayingLoop = false
+		if loopConnection then loopConnection:Disconnect() end
+		if ghostClone then ghostClone:Destroy() end
+		playLoopBtn.Text = "🔁 Repetir Movimientos"
+		playLoopBtn.BackgroundColor3 = currentTheme.AccentDark
+		return
+	end
+
+	if #recordedFrames == 0 then
+		playLoopBtn.Text = "¡Primero Graba!"
+		task.wait(1)
+		playLoopBtn.Text = "🔁 Repetir Movimientos"
+		return
+	end
+
+	isPlayingLoop = true
+	playLoopBtn.Text = "⏹ Detener Repetición"
+	playLoopBtn.BackgroundColor3 = THEME.Danger
+
+	local char = player.Character
+	char.Archivable = true; ghostClone = char:Clone(); char.Archivable = false
+	ghostClone.Parent = workspace
+	
+	for _, part in pairs(ghostClone:GetDescendants()) do
+		if part:IsA("BasePart") then
+			part.CanCollide = false; part.Transparency = 0.5; part.Color = currentTheme.Accent
+		end
+	end
+
+	local currentIndex = 1
+	loopConnection = RunService.Heartbeat:Connect(function()
+		if not isPlayingLoop or not ghostClone or not ghostClone:FindFirstChild("HumanoidRootPart") then return end
+		ghostClone.HumanoidRootPart.CFrame = recordedFrames[currentIndex]
+		currentIndex = currentIndex + 1
+		if currentIndex > #recordedFrames then currentIndex = 1 end
+	end)
+end)
+
+------------------------------------------------------------------
+-- 5. PRISMA Y PLAYERS
+------------------------------------------------------------------
+local secPrismaMain = createSection(prismaPanel, "🔷 Prisma Pegajoso")
+local prismaToggleBtn = createBtn(secPrismaMain, "Activar Prisma", currentTheme.AccentDark, function() end)
+
+prismaToggleBtn.MouseButton1Click:Connect(function()
+	local char = player.Character
+	if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+	if prismaConexion then
+		prismaConexion:Disconnect(); prismaConexion = nil
+		if prismaObjeto then prismaObjeto:Destroy(); prismaObjeto = nil end
+		prismaToggleBtn.Text = "Activar Prisma"
+		return
+	end
+	prismaObjeto = Instance.new("Part", workspace)
+	prismaObjeto.Size = Vector3.new(2, 4, 2); prismaObjeto.Color = currentTheme.Accent
+	prismaObjeto.Material = Enum.Material.Neon; prismaObjeto.Anchored = true; prismaObjeto.CanCollide = false
+	prismaToggleBtn.Text = "Quitar Prisma"
+	prismaConexion = RunService.RenderStepped:Connect(function()
+		if char and char:FindFirstChild("HumanoidRootPart") and prismaObjeto then
+			prismaObjeto.CFrame = char.HumanoidRootPart.CFrame * CFrame.new(prismaOffset)
+		end
+	end)
+end)
+
+local secPlayersList = createSection(playersPanel, "👥 Teleport a Jugadores")
+local playersContainer = Instance.new("Frame", secPlayersList)
+playersContainer.Size = UDim2.new(1, 0, 0, 0)
+playersContainer.AutomaticSize = Enum.AutomaticSize.Y
+playersContainer.BackgroundTransparency = 1
+local pListLayout = Instance.new("UIListLayout", playersContainer)
+pListLayout.Padding = UDim.new(0, 4)
+
+local function updatePlayers()
+	for _, child in pairs(playersContainer:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
+	for _, p in pairs(Players:GetPlayers()) do
+		if p ~= player then
+			createBtn(playersContainer, "⚡ " .. p.Name, currentTheme.Header, function()
+				if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and player.Character then
+					player.Character.HumanoidRootPart.CFrame = p.Character.HumanoidRootPart.CFrame + Vector3.new(0, 3, 0)
+				end
+			end)
+		end
+	end
+end
+Players.PlayerAdded:Connect(updatePlayers)
+Players.PlayerRemoving:Connect(updatePlayers)
+updatePlayers()
+
+------------------------------------------------------------------
+-- CONTROL DE VENTANA Y FPS
+------------------------------------------------------------------
+minimizeBtn.MouseButton1Click:Connect(function()
+	local tween = TweenService:Create(uiScaleObj, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+		Scale = 0
+	})
+	tween:Play()
+	tween.Completed:Connect(function()
+		mainFrame.Visible = false
+		toggleBtn.Visible = true
+	end)
+end)
+
+toggleBtn.MouseButton1Click:Connect(function()
+	toggleBtn.Visible = false
+	animateOpen()
+end)
+
+local lastTick = tick()
+local frames = 0
+RunService.RenderStepped:Connect(function()
+	frames = frames + 1
+	if tick() - lastTick >= 1 then
+		fpsLabel.Text = "FPS: " .. tostring(frames)
+		frames = 0
+		lastTick = tick()
+	end
+end)
