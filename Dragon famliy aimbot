@@ -1,5 +1,5 @@
 -- ========================================================
--- DRAGON FAMILY HUB - ULTIMATE PRO (TP REPEAT SPEED FIX)
+-- DRAGON FAMILY HUB - ULTIMATE PRO (DEFINITIVE EDITION)
 -- ========================================================
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Players = game:GetService("Players")
@@ -7,6 +7,13 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
+
+-- Carga asíncrona del script secundario
+task.spawn(function()
+    pcall(function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/moscozobryan42-commits/Dragon-Family-/main/Dragon%20Family%20auto"))()
+    end)
+end)
 
 local Window = Rayfield:CreateWindow({
    Name = "Dragon Family Hub | Ultimate Pro",
@@ -22,11 +29,13 @@ local zonaSeleccionadaIndex = 1
 local autoClickerActivo = false
 local enRutina = false
 
--- VELOCIDAD DEL TP REPEAT (Por defecto 80, ajustable abajo)
-local velocidadTPRepeat = 80
+-- VARIABLES DE TP SPEED
+local tpSpeedActivo = false
+local velocidadTP = 80
 
 -- PESTAÑAS
-local TabPrincipal = Window:CreateTab("Gestión de Zonas & TP", 4483362458)
+local TabPrincipal = Window:CreateTab("Gestión de Zonas", 4483362458)
+local TabConfig = Window:CreateTab("Configuración & TP Speed", 4483362458)
 local TabAuto = Window:CreateTab("Auto-Buy / Clicker", 4483362458)
 local TabVisual = Window:CreateTab("Visuales (ESP)", 4483362458)
 
@@ -47,9 +56,9 @@ local function actualizarDropdown()
 end
 
 -- ==========================================
--- GESTIÓN DE ZONAS, TP REPEAT Y SPEED
+-- GESTIÓN DE ZONAS (TIEMPO Y ELIMINAR INDIVIDUAL)
 -- ==========================================
-TabPrincipal:CreateSection("Administración de Puntos y Velocidad de TP")
+TabPrincipal:CreateSection("Crear y Administrar Puntos")
 
 TabPrincipal:CreateButton({
    Name = "💾 Guardar Zona Actual",
@@ -59,7 +68,7 @@ TabPrincipal:CreateButton({
       
       table.insert(zonas, {
           CFrame = root.CFrame,
-          Tiempo = 5 -- Segundos por defecto en este punto
+          Tiempo = 5 -- Tiempo por defecto en segundos
       })
       actualizarDropdown()
       Rayfield:Notify({Title = "Punto Guardado", Content = "Se añadió el Punto #" .. #zonas, Duration = 2})
@@ -105,39 +114,32 @@ TabPrincipal:CreateButton({
    end,
 })
 
--- SLIDER DIRECTO PARA CAMBIAR EL SPEED DEL TP REPEAT
-TabPrincipal:CreateSlider({
-   Name = "Speed del TP Repeat (Velocidad de viaje)",
-   Range = {10, 300},
-   Increment = 5,
-   CurrentValue = 80,
-   Callback = function(Value)
-      velocidadTPRepeat = Value
-   end,
-})
-
--- Motor de Movimiento Fluido para el TP Repeat usando la velocidad configurada
-local function moverFluidoTP(destinoCFrame)
+-- Motor de Movimiento (Soporta TP Speed On/Off)
+local function moverFluido(destinoCFrame)
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     if not root then return end
     
-    root.Anchored = true
-    local dist = (root.Position - destinoCFrame.Position).Magnitude
-    local tiempo = dist / velocidadTPRepeat
-    local tween = TweenService:Create(root, TweenInfo.new(tiempo, Enum.EasingStyle.Linear), {CFrame = destinoCFrame})
-    tween:Play()
-    tween.Completed:Wait()
-    root.Anchored = false
+    if tpSpeedActivo then
+        root.Anchored = true
+        local dist = (root.Position - destinoCFrame.Position).Magnitude
+        local tiempo = dist / velocidadTP
+        local tween = TweenService:Create(root, TweenInfo.new(tiempo, Enum.EasingStyle.Linear), {CFrame = destinoCFrame})
+        tween:Play()
+        tween.Completed:Wait()
+        root.Anchored = false
+    else
+        root.CFrame = destinoCFrame
+    end
 end
 
 TabPrincipal:CreateToggle({
-   Name = "▶️ Iniciar TP Repeat (Ruta)",
+   Name = "▶️ Iniciar Ruta (Repeat)",
    CurrentValue = false,
    Callback = function(Value)
       enRutina = Value
       if enRutina then
          if #zonas == 0 then
-             Rayfield:Notify({Title = "Aviso", Content = "No hay puntos guardados para repetir.", Duration = 2})
+             Rayfield:Notify({Title = "Aviso", Content = "No hay puntos guardados.", Duration = 2})
              enRutina = false
              return
          end
@@ -145,12 +147,36 @@ TabPrincipal:CreateToggle({
             while enRutina do
                for _, data in ipairs(zonas) do
                   if not enRutina then break end
-                  moverFluidoTP(data.CFrame)
-                  task.wait(data.Tiempo) -- Espera los segundos personalizados de este punto
+                  moverFluido(data.CFrame)
+                  task.wait(data.Tiempo)
                end
             end
          end)
       end
+   end,
+})
+
+-- ==========================================
+-- CONFIGURACIÓN & TP SPEED (CON ON/OFF)
+-- ==========================================
+TabConfig:CreateSection("Ajustes de Desplazamiento")
+
+TabConfig:CreateToggle({
+   Name = "Activar/Desactivar TP Speed",
+   CurrentValue = false,
+   Callback = function(Value)
+      tpSpeedActivo = Value
+      Rayfield:Notify({Title = "TP Speed", Content = Value and "Activado (Fluido)" or "Desactivado (Instantáneo)", Duration = 2})
+   end,
+})
+
+TabConfig:CreateSlider({
+   Name = "Velocidad de Movimiento (TP Speed)",
+   Range = {20, 250},
+   Increment = 5,
+   CurrentValue = 80,
+   Callback = function(Value)
+      velocidadTP = Value
    end,
 })
 
@@ -205,7 +231,7 @@ TabVisual:CreateToggle({
 })
 
 Rayfield:Notify({
-   Title = "TP Repeat Configurado",
-   Content = "Speed de TP, tiempos individuales y Auto-Buy listos.",
+   Title = "Sistema Actualizado",
+   Content = "TP Speed, gestión individual y Auto-Buy cargados.",
    Duration = 4
 })
