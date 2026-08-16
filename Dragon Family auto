@@ -1,0 +1,256 @@
+local player = game.Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- 1. CREACIÓN DE LA UI MEJORADA CON MINIMIZADOR
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AutoPromptUI_Minimizable"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+-- Ventana Principal
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 280, 0, 310)
+frame.Position = UDim2.new(0.5, -140, 0.5, -155)
+frame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+frame.BackgroundTransparency = 0.1
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
+frame.Parent = screenGui
+
+local frameCorner = Instance.new("UICorner")
+frameCorner.CornerRadius = UDim.new(0, 16)
+frameCorner.Parent = frame
+
+-- Barra superior / Título
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -40, 0, 45)
+title.Position = UDim2.new(0, 15, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "⚡ Auto Prompt Pro"
+title.TextColor3 = Color3.fromRGB(240, 240, 255)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 16
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = frame
+
+-- Botón de Minimizar / Maximizar (-)
+local minimizeBtn = Instance.new("TextButton")
+minimizeBtn.Size = UDim2.new(0, 30, 0, 30)
+minimizeBtn.Position = UDim2.new(1, -35, 0, 8)
+minimizeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 52)
+minimizeBtn.TextColor3 = Color3.fromRGB(200, 200, 220)
+minimizeBtn.Font = Enum.Font.GothamBold
+minimizeBtn.TextSize = 16
+minimizeBtn.Text = "-"
+minimizeBtn.Parent = frame
+
+Instance.new("UICorner", minimizeBtn).CornerRadius = UDim.new(0, 6)
+
+-- Función auxiliar para crear inputs estilizados
+local function crearInput(nombrePlaceholder, posicionY)
+	local textBox = Instance.new("TextBox")
+	textBox.Size = UDim2.new(0, 240, 0, 36)
+	textBox.Position = UDim2.new(0.5, -120, 0, posicionY)
+	textBox.BackgroundColor3 = Color3.fromRGB(32, 32, 40)
+	textBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+	textBox.PlaceholderColor3 = Color3.fromRGB(120, 120, 140)
+	textBox.Font = Enum.Font.GothamMedium
+	textBox.TextSize = 13
+	textBox.PlaceholderText = nombrePlaceholder
+	textBox.Text = ""
+	textBox.Parent = frame
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = textBox
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(50, 50, 65)
+	stroke.Thickness = 1
+	stroke.Parent = textBox
+
+	return textBox
+end
+
+-- Controles del menú
+local delayInput = crearInput("Segundos de espera (ej. 1)", 50)
+local radiusInput = crearInput("Radio en Studs (ej. 15)", 95)
+local zoneInput = crearInput("Nombre de Zona (Opcional)", 140)
+
+-- Botón para Mostrar/Ocultar Zona Visual
+local zoneVisualBtn = Instance.new("TextButton")
+zoneVisualBtn.Size = UDim2.new(0, 240, 0, 36)
+zoneVisualBtn.Position = UDim2.new(0.5, -120, 0, 185)
+zoneVisualBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 52)
+zoneVisualBtn.TextColor3 = Color3.fromRGB(180, 180, 200)
+zoneVisualBtn.Font = Enum.Font.GothamBold
+zoneVisualBtn.TextSize = 13
+zoneVisualBtn.Text = "Zona Visual: OFF"
+zoneVisualBtn.Parent = frame
+
+Instance.new("UICorner", zoneVisualBtn).CornerRadius = UDim.new(0, 8)
+local strokeBtn1 = Instance.new("UIStroke")
+strokeBtn1.Color = Color3.fromRGB(60, 60, 75)
+strokeBtn1.Thickness = 1
+strokeBtn1.Parent = zoneVisualBtn
+
+-- Botón principal de Iniciar / Detener
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0, 240, 0, 44)
+toggleBtn.Position = UDim2.new(0.5, -120, 0, 235)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 136, 255)
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.TextSize = 14
+toggleBtn.Text = "INICIAR"
+toggleBtn.Parent = frame
+
+Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 10)
+
+-- 2. LÓGICA DE MINIMIZAR / MAXIMIZAR
+local minimizado = false
+minimizeBtn.MouseButton1Click:Connect(function()
+	minimizado = not minimizado
+	
+	-- Elementos que se ocultan al minimizar
+	local ocultarComponentes = {delayInput, radiusInput, zoneInput, zoneVisualBtn, toggleBtn}
+	
+	if minimizado then
+		minimizeBtn.Text = "+"
+		frame.Size = UDim2.new(0, 280, 0, 45) -- Reduce la ventana solo a la barra superior
+		for _, elemento in ipairs(ocultarComponentes) do
+			elemento.Visible = false
+		end
+	else
+		minimizeBtn.Text = "-"
+		frame.Size = UDim2.new(0, 280, 0, 310) -- Restaura el tamaño completo
+		for _, elemento in ipairs(ocultarComponentes) do
+			elemento.Visible = true
+		end
+	end
+end)
+
+-- 3. VARIABLES Y LÓGICA DE LA ZONA VISUAL
+local mostrarZonaVisual = false
+local zonaVisualPart = nil
+
+zoneVisualBtn.MouseButton1Click:Connect(function()
+	if minimizado then return end
+	mostrarZonaVisual = not mostrarZonaVisual
+	
+	if mostrarZonaVisual then
+		zoneVisualBtn.Text = "Zona Visual: ON"
+		zoneVisualBtn.TextColor3 = Color3.fromRGB(100, 255, 150)
+		zoneVisualBtn.BackgroundColor3 = Color3.fromRGB(30, 60, 45)
+		
+		local radioVal = tonumber(radiusInput.Text) or 15
+		zonaVisualPart = Instance.new("Part")
+		zonaVisualPart.Name = "ZonaDeJuegoVisual"
+		zonaVisualPart.Shape = Enum.PartType.Ball
+		zonaVisualPart.Size = Vector3.new(radioVal * 2, radioVal * 2, radioVal * 2)
+		zonaVisualPart.Transparency = 0.85
+		zonaVisualPart.BrickColor = BrickColor.new("Cyan")
+		zonaVisualPart.Material = Enum.Material.Neon
+		zonaVisualPart.Anchored = true
+		zonaVisualPart.CanCollide = false
+		zonaVisualPart.Parent = workspace
+	else
+		zoneVisualBtn.Text = "Zona Visual: OFF"
+		zoneVisualBtn.TextColor3 = Color3.fromRGB(180, 180, 200)
+		zoneVisualBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 52)
+		
+		if zonaVisualPart then
+			zonaVisualPart:Destroy()
+			zonaVisualPart = nil
+		end
+	end
+end)
+
+game:GetService("RunService").RenderStepped:Connect(function()
+	if mostrarZonaVisual and zonaVisualPart then
+		local character = player.Character
+		local hrp = character and character:FindFirstChild("HumanoidRootPart")
+		if hrp then
+			zonaVisualPart.Position = hrp.Position
+			local radioVal = tonumber(radiusInput.Text) or 15
+			zonaVisualPart.Size = Vector3.new(radioVal * 2, radioVal * 2, radioVal * 2)
+		end
+	end
+end)
+
+-- 4. LÓGICA DE AUTO-PROMPT
+local corriendo = false
+local loopTarea
+
+toggleBtn.MouseButton1Click:Connect(function()
+	corriendo = not corriendo
+
+	if corriendo then
+		toggleBtn.Text = "DETENER"
+		toggleBtn.BackgroundColor3 = Color3.fromRGB(235, 60, 60)
+
+		local tiempoEspera = tonumber(delayInput.Text) or 1
+		local radioMaximo = tonumber(radiusInput.Text) or 99999
+		local nombreZonaFiltro = zoneInput.Text ~= "" and zoneInput.Text or nil
+
+		loopTarea = task.spawn(function()
+			while corriendo do
+				local character = player.Character
+				local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
+
+				if humanoidRootPart then
+					local contenedorBusqueda = workspace
+					if nombreZonaFiltro then
+						local zonaEncontrada = workspace:FindFirstChild(nombreZonaFiltro, true)
+						if zonaEncontrada then
+							contenedorBusqueda = zonaEncontrada
+						end
+					end
+
+					for _, objeto in pairs(contenedorBusqueda:GetDescendants()) do
+						if objeto:IsA("ProximityPrompt") then
+							local parentPart = objeto.Parent
+							local posicionPrompt = nil
+							
+							if parentPart:IsA("BasePart") then
+								posicionPrompt = parentPart.Position
+							elseif parentPart:IsA("Model") and parentPart.PrimaryPart then
+								posicionPrompt = parentPart.PrimaryPart.Position
+							elseif parentPart:IsA("Model") then
+								local primeraParte = parentPart:FindFirstChildWhichIsA("BasePart")
+								if primeraParte then
+									posicionPrompt = primeraParte.Position
+								end
+							end
+
+							local dentroDelRadio = true
+							if posicionPrompt and radioMaximo then
+								local distancia = (humanoidRootPart.Position - posicionPrompt).Magnitude
+								if distancia > radioMaximo then
+									dentroDelRadio = false
+								end
+							end
+
+							if dentroDelRadio and objeto.Enabled then
+								if fireproximityprompt then
+									fireproximityprompt(objeto)
+								end
+							end
+						end
+					end
+				end
+
+				task.wait(tiempoEspera)
+			end
+		end)
+	else
+		toggleBtn.Text = "INICIAR"
+		toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 136, 255)
+
+		if loopTarea then
+			task.cancel(loopTarea)
+		end
+	end
+end)
+
